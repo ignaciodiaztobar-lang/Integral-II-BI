@@ -35,45 +35,45 @@ with st.form("formulario_cliente"):
     enviar = st.form_submit_button("Analizar Riesgo")
 
 if enviar:
-    # 1. Crear un diccionario con TODAS las variables que el MODELO espera (las 10 de X_mi)
-    # Deben tener exactamente el mismo nombre que en tu Colab
-    datos_para_modelo = pd.DataFrame(columns=features) # Usamos la lista de features que guardamos
-    
-    # 2. Llenamos una fila con los datos de la interfaz
-    # Asegúrate de que los nombres coincidan con los de tu gráfico de importancia
-    nueva_fila = {f: 0 for f in features} # Llenamos todo con 0 por defecto
-    
-    # Mapeamos lo que el usuario ingresó (ajusta los nombres a tus columnas de X_mi)
-    nueva_fila['valor_cliente'] = valor_cliente
-    nueva_fila['edad'] = edad
-    nueva_fila['antiguedad_meses'] = antiguedad
-    nueva_fila['dias_mora_hist'] = dias_mora_hist
-    nueva_fila['reclamos_12m'] = reclamos
-    nueva_fila['num_servicios'] = num_servicios
-    
-    # Si tienes variables categóricas en tu top 10 (como metodo_pago_Efectivo), 
-    # aquí deberías poner lógica de 1 o 0.
-    
-    # Convertimos a DataFrame
-    input_df = pd.DataFrame([nueva_fila])
+    # 1. Crear el diccionario con los datos del usuario
+    # IMPORTANTE: Los nombres deben ser EXACTOS a como aparecen en X_mi.columns
+    # Si alguno es un 'dummy' (ej: metodo_pago_Efectivo), debes ponerlo también
+    datos_usuario = {
+        'valor_cliente': valor_cliente,
+        'edad': edad,
+        'antiguedad_meses': antiguedad,
+        'dias_mora_hist': dias_mora_hist,
+        'reclamos_12m': reclamos,
+        'num_servicios': num_servicios,
+        # Agrega aquí el resto de las variables que falten de tu top 10
+    }
 
-    # 3. EL TRUCO PARA EL SCALER:
-    # El Scaler falló porque espera TODAS las columnas numéricas que vio en Colab.
-    # Vamos a hacer una pequeña trampa: solo escalaremos si es estrictamente necesario, 
-    # o nos aseguraremos de pasarle solo las columnas que él conoce.
+    # 2. Crear DataFrame y asegurar que el ORDEN sea el mismo de Colab
+    input_df = pd.DataFrame([datos_usuario])
     
+    # Rellenamos con 0 cualquier variable de features_list que no hayamos pedido en el UI
+    for col in features:
+        if col not in input_df.columns:
+            input_df[col] = 0
+            
+    # Reordenamos las columnas exactamente como las espera el scaler/modelo
+    input_df = input_df[features]
+
     try:
-        # Intento de transformar (esto fallaba)
-        # Si tu scaler solo se entrenó con las numéricas, el input_df debe tener SOLO esas columnas para el transform
-        input_scaled = scaler.transform(input_df[features]) 
+        # 3. Escalar usando el nuevo scaler sincronizado
+        input_scaled = scaler.transform(input_df)
         
         # 4. Predicción
         probabilidad = model.predict_proba(input_scaled)[0][1]
         
-        # Mostrar resultados (Esto sigue igual...)
+        # Mostrar resultados
         st.subheader(f"Probabilidad de Mora: {probabilidad:.1%}")
-        # ... resto del código de st.success/error
-        
+        if probabilidad < 0.3:
+            st.success("Riesgo Bajo")
+        elif probabilidad < 0.7:
+            st.warning("Riesgo Medio")
+        else:
+            st.error("Riesgo Alto")
+            
     except Exception as e:
-        st.error(f"Error técnico de alineación: {e}")
-        st.info("Asegúrate de que las columnas en app.py coincidan con las de features_list.pkl")
+        st.error(f"Error técnico: {e}")
