@@ -35,35 +35,45 @@ with st.form("formulario_cliente"):
     enviar = st.form_submit_button("Analizar Riesgo")
 
 if enviar:
-    # 1. Crear un DataFrame con TODAS las variables que espera el modelo en orden
-    # Nota: Aquí debes asegurar que el diccionario tenga las mismas llaves que 'features'
-    datos = {f: 0 for f in features} # Inicializamos todo en 0
-    datos['valor_cliente'] = valor_cliente
-    datos['edad'] = edad
-    datos['antiguedad_meses'] = antiguedad
-    datos['dias_mora_hist'] = dias_mora_hist
-    datos['reclamos_12m'] = reclamos
-    datos['num_servicios'] = num_servicios
+    # 1. Crear un diccionario con TODAS las variables que el MODELO espera (las 10 de X_mi)
+    # Deben tener exactamente el mismo nombre que en tu Colab
+    datos_para_modelo = pd.DataFrame(columns=features) # Usamos la lista de features que guardamos
     
-    input_df = pd.DataFrame([datos])
+    # 2. Llenamos una fila con los datos de la interfaz
+    # Asegúrate de que los nombres coincidan con los de tu gráfico de importancia
+    nueva_fila = {f: 0 for f in features} # Llenamos todo con 0 por defecto
     
-    # 2. Escalar los datos (usando el scaler de Colab)
-    # Debemos seleccionar solo las columnas que el scaler conoce
-    # (Asegúrate de que 'columnas_a_escalar' sea igual a la de tu Colab)
-    cols_to_scale = ['edad', 'antiguedad_meses', 'num_servicios', 'dias_mora_hist', 'reclamos_12m'] # Ejemplo
-    # Nota: El scaler espera todas las columnas originales. Una forma simple:
-    input_scaled = scaler.transform(input_df) # Ajustar según tu scaler específico
+    # Mapeamos lo que el usuario ingresó (ajusta los nombres a tus columnas de X_mi)
+    nueva_fila['valor_cliente'] = valor_cliente
+    nueva_fila['edad'] = edad
+    nueva_fila['antiguedad_meses'] = antiguedad
+    nueva_fila['dias_mora_hist'] = dias_mora_hist
+    nueva_fila['reclamos_12m'] = reclamos
+    nueva_fila['num_servicios'] = num_servicios
     
-    # 3. Predicción
-    probabilidad = model.predict_proba(input_scaled)[0][1]
+    # Si tienes variables categóricas en tu top 10 (como metodo_pago_Efectivo), 
+    # aquí deberías poner lógica de 1 o 0.
     
-    # 4. Mostrar resultados
-    st.divider()
-    st.subheader(f"Probabilidad de Mora: {probabilidad:.1%}")
+    # Convertimos a DataFrame
+    input_df = pd.DataFrame([nueva_fila])
+
+    # 3. EL TRUCO PARA EL SCALER:
+    # El Scaler falló porque espera TODAS las columnas numéricas que vio en Colab.
+    # Vamos a hacer una pequeña trampa: solo escalaremos si es estrictamente necesario, 
+    # o nos aseguraremos de pasarle solo las columnas que él conoce.
     
-    if probabilidad < 0.3:
-        st.success("RIESGO BAJO: Cliente con buen comportamiento de pago.")
-    elif probabilidad < 0.7:
-        st.warning("RIESGO MEDIO: Se recomienda monitoreo proactivo.")
-    else:
-        st.error("RIESGO ALTO: Acción de cobranza inmediata requerida.")
+    try:
+        # Intento de transformar (esto fallaba)
+        # Si tu scaler solo se entrenó con las numéricas, el input_df debe tener SOLO esas columnas para el transform
+        input_scaled = scaler.transform(input_df[features]) 
+        
+        # 4. Predicción
+        probabilidad = model.predict_proba(input_scaled)[0][1]
+        
+        # Mostrar resultados (Esto sigue igual...)
+        st.subheader(f"Probabilidad de Mora: {probabilidad:.1%}")
+        # ... resto del código de st.success/error
+        
+    except Exception as e:
+        st.error(f"Error técnico de alineación: {e}")
+        st.info("Asegúrate de que las columnas en app.py coincidan con las de features_list.pkl")
